@@ -1,87 +1,219 @@
-import React, { useState } from 'react';
-import './App.css'
+import React, { useEffect, useMemo, useState } from 'react';
+import './App.css';
 
-// Import housing data
-import ITEMS_DATA from './assets/HousingData/data.json'
+import ITEMS_DATA from './assets/HousingData/data.json';
+
+const DEFAULT_ITEMS_PER_PAGE = 9;
 
 export default function FilteredList() {
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedAgency, setSelectedAgency] = useState('All');
+  const [priceMin, setPriceMin] = useState('');
+  const [priceMax, setPriceMax] = useState('');
+  const [statusFilter, setStatusFilter] = useState('all');
+  const [showDiscountedOnly, setShowDiscountedOnly] = useState(false);
+  const [sortBy, setSortBy] = useState('newest');
+  const [itemsPerPage, setItemsPerPage] = useState(DEFAULT_ITEMS_PER_PAGE);
+  const [currentPage, setCurrentPage] = useState(1);
 
-  const filteredItems = ITEMS_DATA.filter((item) => {
-    const matchesSearch = item.address
-      .toLowerCase()
-      .includes(searchQuery.toLowerCase());
+  const agencies = useMemo(() => [...new Set(ITEMS_DATA.map((item) => item.agency))], []);
 
-    const matchesCategory = 
-      selectedAgency === 'All' || item.agency === selectedAgency;
+  const filteredItems = useMemo(() => {
+    const normalisedQuery = searchQuery.trim().toLowerCase();
+    const minPrice = Number(priceMin) || 0;
+    const maxPrice = Number(priceMax) || Number.POSITIVE_INFINITY;
 
-    return matchesSearch && matchesCategory;
-  });
+    return ITEMS_DATA.filter((item) => {
+      const matchesSearch = !normalisedQuery || item.address.toLowerCase().includes(normalisedQuery);
+      const matchesAgency = selectedAgency === 'All' || item.agency === selectedAgency;
+      const matchesPrice = item.price >= minPrice && item.price <= maxPrice;
+      const matchesStatus =
+        statusFilter === 'all' ||
+        (statusFilter === 'active' ? item.active : !item.active);
+      const matchesDiscount = !showDiscountedOnly || item.old_price > item.price;
 
-  const UniqueAgencies = () => {
-    const agencies = [...new Set(ITEMS_DATA.map(item => item.agency))];
+      return matchesSearch && matchesAgency && matchesPrice && matchesStatus && matchesDiscount;
+    }).sort((a, b) => {
+      switch (sortBy) {
+        case 'price-asc':
+          return a.price - b.price;
+        case 'price-desc':
+          return b.price - a.price;
+        case 'oldest':
+          return new Date(a.date_time) - new Date(b.date_time);
+        case 'newest':
+        default:
+          return new Date(b.date_time) - new Date(a.date_time);
+      }
+    });
+  }, [searchQuery, selectedAgency, priceMin, priceMax, statusFilter, showDiscountedOnly, sortBy]);
 
-    return (
-      <select value={selectedAgency} onChange={(e) => setSelectedAgency(e.target.value)} style={{ padding: '8px', fontSize: '16px' }} >
-        <option key="All" value="All">All Agencies</option>
-        {agencies.map(agency => (
-          <option key={agency} value={agency}>{agency}</option>
-        ))}
-      </select>
-    );
-  };
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [searchQuery, selectedAgency, priceMin, priceMax, statusFilter, showDiscountedOnly, sortBy]);
+
+  useEffect(() => {
+    const totalPages = Math.max(1, Math.ceil(filteredItems.length / itemsPerPage));
+    if (currentPage > totalPages) {
+      setCurrentPage(totalPages);
+    }
+  }, [currentPage, filteredItems.length, itemsPerPage]);
+
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [itemsPerPage]);
+
+  const totalPages = Math.max(1, Math.ceil(filteredItems.length / itemsPerPage));
+  const pageItems = filteredItems.slice(
+    (currentPage - 1) * itemsPerPage,
+    currentPage * itemsPerPage
+  );
 
   return (
-    <div style={{ padding: '20px', fontFamily: 'sans-serif' }}>
-      <h2> 
-        House Search
-      </h2>
+    <div className="app-shell">
+      <header className="app-header">
+        <p className="eyebrow">Discover homes</p>
+        <h2>House Search</h2>
+      </header>
 
-      <div style={{ display: 'flex', gap: '10px', marginBottom: '20px' }}>
-        <input type="text" placeholder="Search items..." value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)} style={{ padding: '8px', fontSize: '16px' }} />
+      <div className="toolbar">
+        <input
+          type="text"
+          placeholder="Search houses..."
+          value={searchQuery}
+          onChange={(e) => setSearchQuery(e.target.value)}
+          className="search-input"
+        />
 
-        <UniqueAgencies />
+        <select
+          value={selectedAgency}
+          onChange={(e) => setSelectedAgency(e.target.value)}
+          className="filter-select"
+        >
+          <option value="All">All Agencies</option>
+          {agencies.map((agency) => (
+            <option key={agency} value={agency}>{agency}</option>
+          ))}
+        </select>
 
+        <input
+          type="number"
+          min="0"
+          placeholder="Min price"
+          value={priceMin}
+          onChange={(e) => setPriceMin(e.target.value)}
+          className="filter-input"
+        />
+
+        <input
+          type="number"
+          min="0"
+          placeholder="Max price"
+          value={priceMax}
+          onChange={(e) => setPriceMax(e.target.value)}
+          className="filter-input"
+        />
+
+        <select
+          value={statusFilter}
+          onChange={(e) => setStatusFilter(e.target.value)}
+          className="filter-select"
+        >
+          <option value="all">All status</option>
+          <option value="active">Active only</option>
+          <option value="inactive">Inactive only</option>
+        </select>
+
+        <select
+          value={sortBy}
+          onChange={(e) => setSortBy(e.target.value)}
+          className="filter-select"
+        >
+          <option value="newest">Newest first</option>
+          <option value="oldest">Oldest first</option>
+          <option value="price-asc">Price: low to high</option>
+          <option value="price-desc">Price: high to low</option>
+        </select>
+
+        <label className="checkbox-label">
+          <input
+            type="checkbox"
+            checked={showDiscountedOnly}
+            onChange={(e) => setShowDiscountedOnly(e.target.checked)}
+          />
+          <span>Discounted homes</span>
+        </label>
       </div>
 
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: '16px' }}>
-        {filteredItems.length > 0 ? (
-          filteredItems.map((item) => (
-            <article key={item.id} style={{ padding: '12px', border: '1px solid #eee', borderRadius: 8, display: 'flex', gap: 12, alignItems: 'flex-start', background: '#fff' }}>
-              <img
-                src={item.image_url}
-                alt={item.address}
-                style={{ width: 160, height: 110, objectFit: 'cover', borderRadius: 6, flexShrink: 0 }}
-              />
+      <div className="results-toolbar">
+        <p className="results-summary">
+          Showing {pageItems.length} of {filteredItems.length} homes
+        </p>
 
-              <div style={{ flex: 1 }}>
-                <h3 style={{ margin: 0, fontSize: '16px' }}>{item.address}</h3>
+        <label className="page-size-control">
+          <span>Items per page</span>
+          <select
+            value={itemsPerPage}
+            onChange={(e) => setItemsPerPage(Number(e.target.value))}
+            className="filter-select"
+          >
+            <option value={6}>6</option>
+            <option value={9}>9</option>
+            <option value={12}>12</option>
+            <option value={18}>24</option>
+            <option value={100}> 100</option>
+          </select>
+        </label>
+      </div>
 
-                <div style={{ marginTop: 8, display: 'flex', gap: 12, flexWrap: 'wrap', color: '#333' }}>
-                  <small><strong>Price:</strong> {item.price}</small>
-                  <small><strong>Old price:</strong> {item.old_price}</small>
-                  <small><strong>Agency:</strong> {item.agency}</small>
-                  <small><strong>Date:</strong> {item.date_time}</small>
-                  <small><strong>Active:</strong> {item.active ? 'Yes' : 'No'}</small>
+      <div className="results-grid">
+        {pageItems.length > 0 ? (
+          pageItems.map((item) => (
+            <article key={item.id} className="property-card">
+              <a href={item.house_url} target="_blank" rel="noreferrer">
+              <img className="property-image" src={item.image_url} alt={item.address} />
+
+              <div className="property-content">
+                <h3>{item.address}</h3>
+
+                <div className="property-meta">
+                  <span><strong>Price:</strong> £{item.price}</span>
+                  <span><strong>Old price:</strong> {item.old_price}</span>
+                  <span><strong>Agency:</strong> {item.agency}</span>
+                  <span><strong>Date Scraped:</strong> {item.date_time}</span>
+                  <span><strong>Active:</strong> {item.active ? 'Yes' : 'No'}</span>
                 </div>
-
-                <p style={{ marginTop: 10, marginBottom: 4 }}>
-                  <a href={item.house_url} target="_blank" rel="noreferrer">View listing</a>
-                </p>
-
-                <p style={{ margin: 0, fontSize: 12, color: '#666' }}>
-                  <span><strong>ID:</strong> {item.id}</span>
-                  {' — '}
-                  <span style={{ wordBreak: 'break-word' }}>{item.house_url}</span>
-                </p>
               </div>
+              </a>
             </article>
           ))
         ) : (
-          <p>No results found matching your criteria.</p>
+          <p className="no-results">No results found matching your criteria.</p>
         )}
       </div>
+
+      {totalPages > 1 && (
+        <div className="pagination">
+          <button type="button" onClick={() => setCurrentPage((page) => Math.max(1, page - 1))} disabled={currentPage === 1}>
+            Previous
+          </button>
+
+          {Array.from({ length: totalPages }, (_, index) => index + 1).map((page) => (
+            <button
+              key={page}
+              type="button"
+              className={page === currentPage ? 'active-page' : ''}
+              onClick={() => setCurrentPage(page)}
+            >
+              {page}
+            </button>
+          ))}
+
+          <button type="button" onClick={() => setCurrentPage((page) => Math.min(totalPages, page + 1))} disabled={currentPage === totalPages}>
+            Next
+          </button>
+        </div>
+      )}
     </div>
   );
 }
